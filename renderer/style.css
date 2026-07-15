@@ -556,6 +556,10 @@ main {
   font-weight: 700;
 }
 
+#import-no-move-wrap {
+  margin-top: 10px;
+}
+
 .filter-button {
   height: 46px;
   min-width: 116px;

@@ -128,6 +128,12 @@ function normalizeMetadata(data){
       m.favorite = m.favorite === true || m.favorite === 'true' || m.favorite === 1 || m.favorite === '1'
       changed = true
     }
+    // Items imported "without moving" keep their original absolute path and must
+    // be treated as read-only on disk (never delete/move the source file).
+    if (typeof m.external !== 'boolean') {
+      m.external = m.external === true || m.external === 'true' || m.external === 1 || m.external === '1'
+      changed = true
+    }
     if (typeof m.description === 'undefined') { m.description = ''; changed = true }
     if (!m.dateAdded) { m.dateAdded = new Date().toISOString(); changed = true }
   }
@@ -753,6 +759,43 @@ function writeMetadataToDisk(data) {
   return normalized.data
 }
 
+// The cast `/media` endpoint normally only serves files inside DATA_ROOT.
+// Items imported "without moving" reference files living elsewhere; those are
+// exposed over the LAN too, but only when the requested path is one we
+// actually recorded in metadata (never arbitrary disk paths). This builds an
+// allowlist of external source paths, cached and rebuilt when metadata.json's
+// mtime changes so we don't reparse it on every thumbnail request.
+let externalPathsCache = null
+let externalPathsMtime = null
+function getExternalPathKey(filePath) {
+  const resolved = path.resolve(filePath || '')
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+function isAllowedExternalPath(filePath) {
+  const p = path.join(APP_ROOT, 'metadata.json')
+  let mtime
+  try { mtime = fs.statSync(p).mtimeMs } catch (e) { mtime = 0 }
+  if (!externalPathsCache || externalPathsMtime !== mtime) {
+    const set = new Set()
+    try {
+      const data = normalizeMetadata(JSON.parse(fs.readFileSync(p, 'utf8'))).data
+      for (const item of data.media) {
+        if (!item.external) continue
+        if (item.path) set.add(getExternalPathKey(item.path))
+        if (item.thumbnail) set.add(getExternalPathKey(item.thumbnail))
+        if (Array.isArray(item.pages)) {
+          for (const page of item.pages) {
+            if (page && !isPathInside(DATA_ROOT, page)) set.add(getExternalPathKey(page))
+          }
+        }
+      }
+    } catch (e) {}
+    externalPathsCache = set
+    externalPathsMtime = mtime
+  }
+  return externalPathsCache.has(getExternalPathKey(filePath))
+}
+
 function findMediaItem(data, id) {
   return data.media.find(m => String(m.id) === String(id))
 }
@@ -764,7 +807,11 @@ function removeMediaFiles(item) {
   if (item.type === 'comic') {
     try { if (item.path && fs.existsSync(item.path)) fs.rmSync(item.path, { recursive: true, force: true }) } catch (e) { console.error('rm comic dir', e) }
   } else {
-    try { if (item.path && fs.existsSync(item.path)) fs.unlinkSync(item.path) } catch (e) { console.error('rm file', e) }
+    // For "do not move" (external) items the source file belongs to the user;
+    // only the generated thumbnail (under DATA_ROOT) is ours to remove.
+    if (!item.external) {
+      try { if (item.path && fs.existsSync(item.path)) fs.unlinkSync(item.path) } catch (e) { console.error('rm file', e) }
+    }
     try { if (item.thumbnail && fs.existsSync(item.thumbnail)) fs.unlinkSync(item.thumbnail) } catch (e) { console.error('rm thumb', e) }
   }
 }
@@ -944,7 +991,10 @@ async function handleCastRequest(req, res) {
 
     if (pathname === '/media') {
       const mediaPath = requestUrl.searchParams.get('path') || ''
-      if (!mediaPath || !isPathInside(DATA_ROOT, mediaPath)) {
+      const insideData = mediaPath && isPathInside(DATA_ROOT, mediaPath)
+      // Allow external files only when they are explicitly recorded in metadata
+      // (imported "without moving"); arbitrary disk paths stay forbidden.
+      if (!mediaPath || (!insideData && !isAllowedExternalPath(mediaPath))) {
         res.writeHead(403)
         res.end('Forbidden')
         return
@@ -1091,8 +1141,16 @@ ipcMain.handle('update-durations', async (event, durations) => {
   }
 })
 
-ipcMain.handle('move-file', async (event, srcPath, category, mediaType) => {
+ipcMain.handle('move-file', async (event, srcPath, category, mediaType, external) => {
   try {
+    // "Do not move": leave the file where it is, just remember its path and
+    // generate a thumbnail (which still lives under DATA_ROOT).
+    if (external) {
+      const thumb = await generateThumbnail(srcPath, mediaType)
+      const duration = mediaType === 'video' ? await getVideoDuration(srcPath) : null
+      return { path: srcPath, thumbnail: thumb, duration, external: true }
+    }
+
     const destDir = path.join(DATA_ROOT, mediaType === 'photo' ? 'photos' : 'videos', category)
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true })
     const base = path.basename(srcPath)

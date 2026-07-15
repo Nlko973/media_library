@@ -84,6 +84,7 @@ const viewerSwipe = {
 
 async function init() {
   applyStoredTheme()
+  applyImportNoMovePref()
   bindUI()
   state.metadata = await window.api.readMetadata()
   updateImportMode()
@@ -109,6 +110,9 @@ function bindUI() {
   $('#select-folder').addEventListener('click', selectFolder)
   $('#select-files').addEventListener('click', selectFiles)
   $('#import-move').addEventListener('click', importMove)
+  $('#import-no-move').addEventListener('change', event => {
+    localStorage.setItem('import-no-move', event.target.checked ? '1' : '0')
+  })
   $('#select-comic-links').addEventListener('click', selectComicLinksFile)
   $('#import-comics').addEventListener('click', importComics)
   $('#import-manual-comic').addEventListener('click', openManualComicModal)
@@ -194,6 +198,11 @@ function applyStoredTheme() {
   updateThemeButton(theme)
 }
 
+function applyImportNoMovePref() {
+  const checkbox = $('#import-no-move')
+  if (checkbox) checkbox.checked = localStorage.getItem('import-no-move') === '1'
+}
+
 function toggleTheme() {
   const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'
   document.body.dataset.theme = nextTheme
@@ -271,6 +280,7 @@ function updateImportMode() {
   $('#import-path').classList.toggle('hidden', isComic)
   $('#import-category').classList.toggle('hidden', false)
   $('#import-move').classList.toggle('hidden', isComic)
+  $('#import-no-move-wrap').classList.toggle('hidden', isComic)
 }
 
 function getModeItems() {
@@ -544,9 +554,11 @@ async function importMove() {
   if (files && files.error) return alert('Error: ' + files.error)
   if (!files.length) return alert('No supported files found in this folder')
 
-  const ok = confirm(`Import ${files.length} files to "${category}"?`)
+  const external = $('#import-no-move').checked
+  const verb = external ? 'import' : 'move'
+  const ok = confirm(`${verb.charAt(0).toUpperCase() + verb.slice(1)} ${files.length} files to "${category}"?`)
   if (!ok) return
-  await importPaths(files, category)
+  await importPaths(files, category, external)
 }
 
 async function selectFiles() {
@@ -556,7 +568,7 @@ async function selectFiles() {
   const paths = await window.api.selectFiles(state.mode)
   if (!paths || paths.error) return alert(paths?.error || 'No files selected')
   if (!paths.length) return
-  await importPaths(paths, category)
+  await importPaths(paths, category, $('#import-no-move').checked)
 }
 
 async function selectComicLinksFile() {
@@ -686,7 +698,7 @@ function formatComicImportErrors(imported, errors) {
   return `Imported: ${imported}\nNot added: ${(errors || []).length}\n\n${list}`
 }
 
-async function importPaths(paths, category) {
+async function importPaths(paths, category, external) {
   state.importing = true
   setImportControlsDisabled(true)
   setImportProgress(0, paths.length, 'Preparing')
@@ -695,9 +707,9 @@ async function importPaths(paths, category) {
     let imported = 0
     for (const path of paths) {
       setImportProgress(imported, paths.length, getFileName(path))
-      const result = await window.api.moveFile(path, category, state.mode)
+      const result = await window.api.moveFile(path, category, state.mode, external)
       if (result && result.error) console.error('move error', result)
-      else addMediaEntry(result.path, path, result.thumbnail, category, result.duration)
+      else addMediaEntry(result.path, path, result.thumbnail, category, result.duration, external)
       imported += 1
       setImportProgress(imported, paths.length, getFileName(path))
     }
@@ -754,7 +766,7 @@ async function resolveImportCategory() {
   return resolveCategoryFromSelect($('#import-category'))
 }
 
-function addMediaEntry(destPath, originalPath, thumbnail, category, duration) {
+function addMediaEntry(destPath, originalPath, thumbnail, category, duration, external) {
   const item = {
     id: Date.now() + Math.random(),
     name: getFileName(destPath),
@@ -766,7 +778,8 @@ function addMediaEntry(destPath, originalPath, thumbnail, category, duration) {
     tags: [],
     favorite: false,
     description: '',
-    dateAdded: new Date().toISOString()
+    dateAdded: new Date().toISOString(),
+    external: !!external
   }
   if (duration) item.duration = duration
   state.metadata.media.push(item)
@@ -1122,7 +1135,14 @@ async function bulkDeleteSelected() {
   const ids = Array.from(state.selectedMediaIds)
   if (!ids.length) return
 
-  const ok = confirm(`Delete ${ids.length} selected files and their library records?`)
+  const hasExternal = ids.some(id => {
+    const item = findMediaById(id)
+    return item && item.external
+  })
+  const msg = hasExternal
+    ? `Remove ${ids.length} items from the library? Files imported "without moving" stay in place.`
+    : `Delete ${ids.length} selected files and their library records?`
+  const ok = confirm(msg)
   if (!ok) return
 
   for (const id of ids) {
@@ -1610,7 +1630,11 @@ function closeEditModal() {
 }
 
 async function deleteMedia(id) {
-  const ok = confirm('Delete this file and its library record?')
+  const item = findMediaById(id)
+  const msg = item && item.external
+    ? 'Remove from library? The original file will stay in place.'
+    : 'Delete this file and its library record?'
+  const ok = confirm(msg)
   if (!ok) return
 
   const result = await window.api.deleteMedia(id)

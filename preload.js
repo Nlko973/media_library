@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   writeMetadata: (data) => ipcRenderer.invoke('write-metadata', data),
   toggleFavorite: (id, favorite) => ipcRenderer.invoke('toggle-favorite', id, favorite),
   updateDurations: (durations) => ipcRenderer.invoke('update-durations', durations),
-  moveFile: (srcPath, category, mediaType) => ipcRenderer.invoke('move-file', srcPath, category, mediaType),
+  moveFile: (srcPath, category, mediaType, external) => ipcRenderer.invoke('move-file', srcPath, category, mediaType, external),
   getVideoDuration: (videoPath) => ipcRenderer.invoke('get-video-duration', videoPath),
   selectVideoThumbnail: (videoPath) => ipcRenderer.invoke('select-video-thumbnail', videoPath),
   pasteVideoThumbnail: (videoPath) => ipcRenderer.invoke('paste-video-thumbnail', videoPath),
