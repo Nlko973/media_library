@@ -539,8 +539,14 @@ function renderTags() {
 }
 
 async function selectFolder() {
-  const path = await window.api.selectFolder()
-  $('#import-path').textContent = path || ''
+  const btn = $('#select-folder')
+  btn.disabled = true
+  try {
+    const path = await window.api.selectFolder()
+    $('#import-path').textContent = path || ''
+  } finally {
+    btn.disabled = false
+  }
 }
 
 async function importMove() {
@@ -562,13 +568,19 @@ async function importMove() {
 }
 
 async function selectFiles() {
-  const category = await resolveImportCategory()
-  if (!category) return
+  const btn = $('#select-files')
+  btn.disabled = true
+  try {
+    const category = await resolveImportCategory()
+    if (!category) return
 
-  const paths = await window.api.selectFiles(state.mode)
-  if (!paths || paths.error) return alert(paths?.error || 'No files selected')
-  if (!paths.length) return
-  await importPaths(paths, category, $('#import-no-move').checked)
+    const paths = await window.api.selectFiles(state.mode)
+    if (!paths || paths.error) return alert(paths?.error || 'No files selected')
+    if (!paths.length) return
+    await importPaths(paths, category, $('#import-no-move').checked)
+  } finally {
+    btn.disabled = false
+  }
 }
 
 async function selectComicLinksFile() {

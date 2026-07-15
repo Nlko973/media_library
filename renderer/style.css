@@ -270,7 +270,7 @@ main {
 }
 
 .collapsible-body {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .collapsible-body.collapsed {
