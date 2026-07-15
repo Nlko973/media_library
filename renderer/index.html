@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Медиатека</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark">M</div>
+          <div>
+            <h1>Медиатека</h1>
+            <p>Фото и видео в аккуратном порядке</p>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <button id="cast-link" class="secondary-button cast-button" type="button" title="Открыть на устройстве в локальной сети">Трансляция</button>
+          <button id="theme-toggle" class="theme-toggle" type="button" title="Сменить тему" aria-label="Сменить тему">☾</button>
+          <div class="mode-toggle" aria-label="Тип медиа">
+            <button id="mode-photo" class="active" type="button">Фото</button>
+            <button id="mode-video" type="button">Видео</button>
+            <button id="mode-comic" type="button">Комиксы</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <aside id="sidebar">
+          <section class="panel">
+            <div class="section-title">
+              <h3>Категории</h3>
+              <div class="section-actions">
+                <span id="category-count">0</span>
+                <button id="toggle-categories" class="collapse-button" type="button" title="Свернуть категории">^</button>
+              </div>
+            </div>
+            <div id="categories-panel" class="collapsible-body">
+              <input id="category-search" class="panel-search" placeholder="Поиск категории" autocomplete="off" />
+              <ul id="categories"></ul>
+            </div>
+            <div class="input-row">
+              <input id="new-category" placeholder="Новая категория" />
+              <button id="add-category" class="icon-button" title="Добавить категорию" type="button">+</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <h3>Теги</h3>
+              <div class="section-actions">
+                <span id="tag-count">0</span>
+                <button id="toggle-tags" class="collapse-button" type="button" title="Свернуть теги">^</button>
+              </div>
+            </div>
+            <div id="tags-panel" class="collapsible-body">
+              <input id="tag-search" class="panel-search" placeholder="Поиск тега" autocomplete="off" />
+              <div id="tags"></div>
+            </div>
+            <div class="input-row">
+              <input id="new-tag" placeholder="Новый тег" />
+              <button id="add-tag" class="icon-button" title="Добавить тег" type="button">+</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <h3>Импорт</h3>
+            </div>
+            <button id="select-files" class="primary-button" type="button">Выбрать файлы</button>
+            <button id="select-folder" class="secondary-button" type="button">Выбрать папку</button>
+            <div id="import-path" title="Выбранная папка"></div>
+            <label class="field-label" for="import-category">Категория импорта</label>
+            <select id="import-category"></select>
+            <div id="import-progress" class="hidden">
+              <div class="progress-head">
+                <span id="import-progress-label">Импорт</span>
+                <span id="import-progress-count">0 / 0</span>
+              </div>
+              <div class="progress-track">
+                <div id="import-progress-fill"></div>
+              </div>
+            </div>
+            <button id="import-move" class="secondary-button" type="button">Импортировать папку</button>
+            <button id="select-comic-links" class="secondary-button comic-import-control hidden" type="button">Выбрать файл ссылок</button>
+            <div id="comic-links-path" class="comic-import-control hidden" title="Файл ссылок"></div>
+            <button id="import-comics" class="primary-button comic-import-control hidden" type="button">Импортировать комиксы</button>
+            <button id="import-manual-comic" class="secondary-button comic-import-control hidden" type="button">Ручной импорт комикса</button>
+          </section>
+        </aside>
+
+        <section id="content">
+          <div class="content-toolbar">
+            <div class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-input" placeholder="Поиск по имени или тегам" />
+            </div>
+            <label class="toggle-line">
+              <input type="checkbox" id="exclude-tags"/>
+              <span>Исключить выбранные теги</span>
+            </label>
+            <button id="toggle-favorites" class="filter-button" type="button">Избранное</button>
+          </div>
+
+          <div class="summary-row">
+            <div>
+              <span class="summary-label">Всего</span>
+              <strong id="total-count">0</strong>
+            </div>
+            <div>
+              <span class="summary-label">Показано</span>
+              <strong id="visible-count">0</strong>
+            </div>
+            <div>
+              <span class="summary-label">Избранное</span>
+              <strong id="favorite-count">0</strong>
+            </div>
+          </div>
+
+          <div id="bulk-toolbar" class="bulk-toolbar">
+            <button id="select-visible" class="secondary-button" type="button">Выбрать на экране</button>
+            <button id="clear-selection" class="secondary-button" type="button">Снять выбор</button>
+            <span id="selected-count">0 выбрано</span>
+            <select id="bulk-category"></select>
+            <button id="bulk-change-category" class="primary-button" type="button">Сменить категорию</button>
+            <button id="bulk-delete" class="danger-button" type="button">Удалить</button>
+          </div>
+
+          <div id="media-grid"></div>
+          <div id="empty-state" class="hidden">
+            <h2>Здесь пока пусто</h2>
+            <p>Импортируйте фото или видео, и они появятся в этой сетке.</p>
+          </div>
+          <div id="pagination"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="viewer" class="hidden">
+      <button id="viewer-close" title="Закрыть" type="button">×</button>
+      <div id="comic-viewer-tools" class="viewer-tools hidden">
+        <button id="comic-zoom-out" type="button" title="Уменьшить">-</button>
+        <input id="comic-zoom" type="range" min="50" max="180" step="10" value="100" title="Масштаб" />
+        <button id="comic-zoom-in" type="button" title="Увеличить">+</button>
+        <span id="comic-zoom-value">100%</span>
+      </div>
+      <div id="viewer-body"></div>
+    </div>
+
+    <div id="edit-modal" class="modal hidden">
+      <form id="edit-form" class="edit-dialog">
+        <div class="edit-head">
+          <h2>Edit file</h2>
+          <button id="edit-close" type="button" title="Close">x</button>
+        </div>
+        <label>
+          Name
+          <input id="edit-name" autocomplete="off" />
+        </label>
+        <label>
+          Category
+          <select id="edit-category"></select>
+        </label>
+        <label>
+          Tags
+          <details id="edit-tags-menu" class="tag-menu">
+            <summary id="edit-tags-summary">Select tags</summary>
+            <div id="edit-tags" class="tag-select"></div>
+          </details>
+          <div class="input-row">
+            <input id="edit-new-tag" autocomplete="off" placeholder="new tag" />
+            <button id="edit-add-tag" class="icon-button" type="button" title="Add tag">+</button>
+          </div>
+        </label>
+        <label>
+          Description
+          <textarea id="edit-description" rows="4"></textarea>
+        </label>
+        <div id="edit-video-thumbnail" class="edit-thumbnail hidden">
+          <span>Video preview</span>
+          <div class="edit-thumbnail-row">
+            <img id="edit-thumbnail-img" alt="Video preview" />
+            <div class="edit-thumbnail-actions">
+              <button id="edit-thumbnail-change" class="secondary-button" type="button">Choose preview</button>
+              <button id="edit-thumbnail-paste" class="secondary-button" type="button">Paste from clipboard</button>
+            </div>
+          </div>
+        </div>
+        <div id="edit-comic-pages" class="edit-comic-pages hidden">
+          <span>Comic pages</span>
+          <div id="edit-comic-pages-list"></div>
+        </div>
+        <div class="edit-actions">
+          <button id="edit-cancel" class="secondary-button" type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="manual-comic-modal" class="modal hidden">
+      <form id="manual-comic-form" class="edit-dialog">
+        <div class="edit-head">
+          <h2>Ручной импорт комикса</h2>
+          <button id="manual-comic-close" type="button" title="Закрыть">x</button>
+        </div>
+        <label>
+          Название
+          <input id="manual-comic-title" autocomplete="off" />
+        </label>
+        <label>
+          Категория
+          <select id="manual-comic-category"></select>
+        </label>
+        <label>
+          Папка с содержимым
+          <div class="path-picker-row">
+            <input id="manual-comic-folder" readonly />
+            <button id="manual-comic-folder-select" class="secondary-button" type="button">Выбрать</button>
+          </div>
+        </label>
+        <label>
+          Превью
+          <div class="path-picker-row">
+            <input id="manual-comic-preview" readonly />
+            <button id="manual-comic-preview-select" class="secondary-button" type="button">Выбрать</button>
+          </div>
+        </label>
+        <div class="edit-actions">
+          <button id="manual-comic-cancel" class="secondary-button" type="button">Отмена</button>
+          <button class="primary-button" type="submit">Импортировать</button>
+        </div>
+      </form>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
