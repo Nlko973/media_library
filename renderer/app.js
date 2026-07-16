@@ -262,17 +262,39 @@ function setMode(mode) {
   updateImportMode()
   renderCategories()
   renderTags()
+  // scrollToTopOfContent is called after render so the browser has
+  // finished layout and the scroll reset sticks.
   renderMediaGrid()
-  // Switching tabs should always land the user back at the top of the page.
   scrollToTopOfContent()
 }
 
 function scrollToTopOfContent() {
-  const content = $('#content')
-  if (content) content.scrollTop = 0
-  const sidebar = $('#sidebar')
-  if (sidebar) sidebar.scrollTop = 0
-  window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  const candidates = [$('#content'), $('main'), $('#app')]
+  const reset = () => {
+    // Reset every scroll container that could hold the scroll position.
+    candidates.forEach(el => {
+      if (!el) return
+      if (typeof el.scrollTop === 'number') el.scrollTop = 0
+      if (el.scrollTo) el.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    })
+    const sidebar = $('#sidebar')
+    if (sidebar) {
+      sidebar.scrollTop = 0
+      sidebar.scrollTo?.({ top: 0, left: 0, behavior: 'auto' })
+    }
+    window.scrollTo(0, 0)
+    // As a last resort, scroll the content toolbar into view at the top.
+    const toolbar = $('.content-toolbar')
+    if (toolbar) toolbar.scrollIntoView({ block: 'start', behavior: 'auto' })
+  }
+  // Reset immediately, then again after the browser finishes layout for the
+  // newly rendered content. Two rAFs guarantee we run after paint; a small
+  // timeout covers image-load driven reflow of the grid.
+  reset()
+  requestAnimationFrame(reset)
+  requestAnimationFrame(() => requestAnimationFrame(reset))
+  setTimeout(reset, 0)
+  setTimeout(reset, 50)
 }
 
 function toggleSidebarPanel(panelId, buttonId) {
@@ -928,6 +950,13 @@ function createMediaCard(item) {
     duration.dataset.mediaId = String(item.id)
     duration.textContent = formatDuration(item.duration)
     thumbWrap.appendChild(duration)
+    if (item.watched) {
+      const watched = document.createElement('span')
+      watched.className = 'media-watched-badge'
+      watched.title = 'Просмотрено'
+      watched.textContent = '✓'
+      thumbWrap.appendChild(watched)
+    }
   }
 
   const info = document.createElement('div')
@@ -1220,13 +1249,134 @@ function openViewer(item) {
     video.src = mediaSrc(item.path)
     video.controls = true
     video.autoplay = true
-    video.loop = true
     body.appendChild(video)
+    setupVideoViewer(video, item)
   }
 
   const current = findMediaById(item.id) || item
   body.appendChild(renderViewerMeta(current))
   $('#viewer').classList.remove('hidden')
+}
+
+// Saves the video playback position to disk at most once every 5 seconds so
+// reopening the video can offer to resume from where we left off.
+function setupVideoViewer(video, item) {
+  let lastSavedPosition = -1
+  const SAVE_INTERVAL = 5 // seconds between position saves
+
+  // "Watched" checkbox, shown over the video (top-left) so the user can mark
+  // the video as watched/unwatched without leaving the viewer.
+  addVideoWatchedControl(video, item)
+
+  // Persist the position every 5s of playback (not wall-clock), and on pause.
+  const maybeSavePosition = () => {
+    const t = Number(video.currentTime) || 0
+    if (Math.abs(t - lastSavedPosition) < SAVE_INTERVAL) return
+    lastSavedPosition = t
+    const target = findMediaById(item.id)
+    if (target) target.position = t
+    if (window.api.updateMedia) {
+      window.api.updateMedia({ id: item.id, position: t }).catch(() => {})
+    }
+  }
+
+  video.addEventListener('timeupdate', maybeSavePosition)
+  video.addEventListener('pause', maybeSavePosition)
+
+  // Mark as watched when playback reaches the end.
+  video.addEventListener('ended', () => {
+    const target = findMediaById(item.id)
+    if (target && !target.watched) {
+      target.watched = true
+      target.position = 0
+      if (window.api.updateMedia) {
+        window.api.updateMedia({ id: item.id, watched: true, position: 0 }).catch(() => {})
+      }
+      // Reflect the green check on the grid without closing the viewer.
+      renderMediaGrid()
+    }
+  })
+
+  // "Resume from last position" overlay: shown for 5s if a saved position
+  // exists and is far enough from the start to be worth resuming.
+  const savedPosition = Number(findMediaById(item.id)?.position) || 0
+  if (savedPosition >= 5) {
+    showVideoResumeOverlay(video, item, savedPosition)
+  }
+}
+
+function addVideoWatchedControl(video, item) {
+  const body = $('#viewer-body')
+  const wrap = document.createElement('label')
+  wrap.className = 'video-watched-toggle'
+
+  const cb = document.createElement('input')
+  cb.type = 'checkbox'
+  cb.checked = !!(findMediaById(item.id)?.watched)
+  cb.addEventListener('change', () => {
+    const target = findMediaById(item.id)
+    if (!target) return
+    target.watched = cb.checked
+    // Reset the saved position when marking as watched.
+    if (cb.checked) target.position = 0
+    if (window.api.updateMedia) {
+      window.api.updateMedia({
+        id: item.id,
+        watched: cb.checked,
+        position: cb.checked ? 0 : (target.position || 0)
+      }).catch(() => {})
+    }
+    renderMediaGrid()
+  })
+
+  const span = document.createElement('span')
+  span.textContent = 'просмотрено'
+
+  wrap.appendChild(cb)
+  wrap.appendChild(span)
+  body.appendChild(wrap)
+
+  // Keep clicks/keys on the checkbox from bubbling to the viewer.
+  ;['click', 'mousedown', 'keydown', 'keyup'].forEach(type => {
+    wrap.addEventListener(type, event => event.stopPropagation())
+  })
+}
+
+function showVideoResumeOverlay(video, item, position) {
+  const body = $('#viewer-body')
+  const overlay = document.createElement('div')
+  overlay.className = 'video-resume-overlay'
+
+  const label = document.createElement('span')
+  label.className = 'video-resume-label'
+  label.textContent = `Продолжить с ${formatDuration(position)}?`
+
+  const resumeBtn = document.createElement('button')
+  resumeBtn.type = 'button'
+  resumeBtn.className = 'video-resume-button'
+  resumeBtn.textContent = 'Продолжить'
+  resumeBtn.addEventListener('click', event => {
+    event.stopPropagation()
+    try { video.currentTime = position } catch (e) {}
+    video.play?.().catch(() => {})
+    overlay.remove()
+  })
+
+  overlay.appendChild(label)
+  overlay.appendChild(resumeBtn)
+  body.appendChild(overlay)
+
+  // Stop clicks on the overlay from bubbling to the viewer (which would close it).
+  overlay.addEventListener('click', event => event.stopPropagation())
+  overlay.addEventListener('mousedown', event => event.stopPropagation())
+
+  // Auto-hide after 5 seconds.
+  const hideTimer = setTimeout(() => overlay.remove(), 5000)
+  // Also hide as soon as the user seeks manually.
+  video.addEventListener('seeked', () => {
+    clearTimeout(hideTimer)
+    overlay.remove()
+  }, { once: true })
 }
 
 // Renders the metadata block under the viewer. The Tags and Description rows
@@ -1240,18 +1390,9 @@ function renderViewerMeta(current) {
   categoryRow.textContent = `Category: ${current.category || 'No category'}`
   meta.appendChild(categoryRow)
 
-  meta.appendChild(buildViewerMetaRow({
-    label: 'Tags',
-    value: (current.tags || []).join(', '),
-    placeholder: 'none',
-    multiline: false,
-    editTitle: 'Нажмите, чтобы изменить теги (через запятую)',
-    onCommit: text => {
-      const tags = text.split(',').map(tag => tag.trim()).filter(Boolean)
-      return commitViewerField(current, { tags })
-    },
-    render: text => text || 'none',
-    onChange: () => renderTags()
+  meta.appendChild(buildViewerTagSelector({
+    item: current,
+    editTitle: 'Нажмите, чтобы изменить теги'
   }))
 
   meta.appendChild(buildViewerMetaRow({
@@ -1298,6 +1439,187 @@ function buildViewerMetaRow({ label, value, placeholder, multiline, editTitle, o
   })
 
   return row
+}
+
+function buildViewerTagSelector({ item, editTitle }) {
+  const row = document.createElement('div')
+  row.className = 'viewer-meta-row viewer-tag-selector'
+  row.title = editTitle
+
+  const labelEl = document.createElement('span')
+  labelEl.className = 'viewer-meta-label'
+  labelEl.textContent = 'Tags:'
+  row.appendChild(labelEl)
+
+  const valueEl = document.createElement('span')
+  valueEl.className = 'viewer-meta-value'
+  valueEl.textContent = (item.tags || []).join(', ') || 'none'
+  row.appendChild(valueEl)
+
+  // Mutable working copy of tags so we can toggle without saving immediately
+  let workingTags = [...(item.tags || [])]
+
+  row.addEventListener('click', () => {
+    if (row.classList.contains('editing')) return
+    openViewerTagEditor(row, valueEl, workingTags, item, async (newTags) => {
+      workingTags = newTags
+      valueEl.textContent = newTags.join(', ') || 'none'
+      renderTags()
+      renderMediaGrid()
+      return true
+    })
+  })
+
+  return row
+}
+
+function openViewerTagEditor(row, valueEl, initialTags, item, onDone) {
+  row.classList.add('editing')
+  valueEl.classList.add('hidden')
+
+  const wrap = document.createElement('div')
+  wrap.className = 'viewer-tag-editor'
+
+  // Tag search input
+  const searchInput = document.createElement('input')
+  searchInput.type = 'text'
+  searchInput.placeholder = 'Поиск тега...'
+  searchInput.className = 'viewer-meta-input viewer-tag-search'
+
+  const list = document.createElement('div')
+  list.className = 'viewer-tag-list'
+
+  // Merge all known tags with current item tags
+  const allTags = Array.from(new Set([...state.metadata.tags, ...initialTags]))
+    .sort((a, b) => a.localeCompare(b))
+
+  let selected = [...initialTags]
+
+  function renderCheckboxes() {
+    list.innerHTML = ''
+    const query = (searchInput.value || '').trim().toLowerCase()
+    const filtered = query
+      ? allTags.filter(tag => tag.toLowerCase().includes(query))
+      : allTags
+    filtered.forEach(tag => {
+      const label = document.createElement('label')
+      label.className = 'tag-option'
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.value = tag
+      cb.checked = selected.includes(tag)
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          if (!selected.includes(tag)) selected.push(tag)
+        } else {
+          selected = selected.filter(t => t !== tag)
+        }
+      })
+      const span = document.createElement('span')
+      span.textContent = tag
+      label.appendChild(cb)
+      label.appendChild(span)
+      list.appendChild(label)
+    })
+  }
+
+  searchInput.addEventListener('input', renderCheckboxes)
+
+  renderCheckboxes()
+
+  const addRow = document.createElement('div')
+  addRow.className = 'viewer-tag-add'
+  const addInput = document.createElement('input')
+  addInput.type = 'text'
+  addInput.placeholder = 'Новый тег'
+  addInput.className = 'viewer-meta-input'
+  const addBtn = document.createElement('button')
+  addBtn.type = 'button'
+  addBtn.className = 'secondary-button'
+  addBtn.textContent = '+'
+  addBtn.addEventListener('click', () => {
+    const val = addInput.value.trim()
+    if (!val) return
+    if (!allTags.includes(val)) {
+      allTags.push(val)
+      allTags.sort((a, b) => a.localeCompare(b))
+    }
+    if (!selected.includes(val)) selected.push(val)
+    addInput.value = ''
+    renderCheckboxes()
+  })
+  addInput.addEventListener('keydown', event => {
+    event.stopPropagation()
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      addBtn.click()
+    }
+  })
+
+  // Stop propagation so viewer keyboard shortcuts don't fire
+  ;['click', 'mousedown', 'keydown', 'keyup'].forEach(type => {
+    wrap.addEventListener(type, event => event.stopPropagation())
+  })
+
+  addRow.appendChild(addInput)
+  addRow.appendChild(addBtn)
+  wrap.appendChild(searchInput)
+  wrap.appendChild(list)
+  wrap.appendChild(addRow)
+
+  const actions = document.createElement('div')
+  actions.className = 'viewer-meta-actions'
+
+  const save = document.createElement('button')
+  save.type = 'button'
+  save.className = 'secondary-button'
+  save.textContent = 'Сохранить'
+
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.className = 'secondary-button'
+  cancel.textContent = 'Отмена'
+
+  let finished = false
+  const finish = async (apply) => {
+    if (finished) return
+    finished = true
+    if (apply) {
+      save.disabled = true
+      cancel.disabled = true
+      const ok = await commitViewerField(item, { tags: selected })
+      if (ok === false) {
+        finished = false
+        save.disabled = false
+        cancel.disabled = false
+        return
+      }
+      await onDone(selected)
+    }
+    row.classList.remove('editing')
+    valueEl.classList.remove('hidden')
+    wrap.replaceWith(valueEl)
+    actions.remove()
+  }
+
+  save.addEventListener('click', () => finish(true))
+  cancel.addEventListener('click', () => finish(false))
+
+  // Escape to cancel
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape' && !finished) {
+      e.preventDefault()
+      e.stopPropagation()
+      document.removeEventListener('keydown', escHandler)
+      finish(false)
+    }
+  })
+
+  valueEl.replaceWith(wrap)
+  addInput.focus()
+  row.appendChild(actions)
+  actions.appendChild(save)
+  actions.appendChild(cancel)
 }
 
 function startViewerMetaEdit(row, valueEl, initialValue, multiline, commit) {
@@ -1439,6 +1761,9 @@ function stopViewerMedia() {
 
 function handleViewerKeys(event) {
   if ($('#viewer').classList.contains('hidden')) return
+  // Don't interfere with text editing inside the viewer (description, tags, etc.)
+  const tag = event.target.tagName ? event.target.tagName.toLowerCase() : ''
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
   const key = event.key ? event.key.toLowerCase() : ''
   if (key === 'f' || key === 'а') {
     const current = findMediaById(state.viewerId)

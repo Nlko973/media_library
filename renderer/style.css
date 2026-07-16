@@ -201,6 +201,7 @@ main {
   flex: 1;
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 #sidebar {
@@ -780,6 +781,24 @@ main {
   display: none;
 }
 
+.media-watched-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(16, 163, 74, .45);
+}
+
 .media-info {
   padding: 10px;
 }
@@ -1143,6 +1162,141 @@ main {
   border-color: #3b4860;
   background: rgba(255, 255, 255, .1);
   color: #fff;
+}
+
+.viewer-tag-selector .viewer-meta-value {
+  cursor: pointer;
+}
+
+.viewer-tag-editor {
+  width: 100%;
+  background: rgba(10, 15, 28, .4);
+  border: 1px solid #3b4860;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.viewer-tag-list {
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.viewer-tag-list .tag-option {
+  color: #dbe4f0;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.viewer-tag-list .tag-option:hover {
+  background: rgba(96, 165, 250, .15);
+}
+
+.viewer-tag-list .tag-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.viewer-tag-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.viewer-tag-add .viewer-meta-input {
+  flex: 1;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.viewer-tag-add .secondary-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  margin-top: 0;
+  border-color: #3b4860;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.viewer-tag-search {
+  margin-bottom: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+/* "Watched" checkbox shown over the video in the viewer (bottom-left). */
+.video-watched-toggle {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(10, 15, 28, .72);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 4px 12px rgba(10, 15, 28, .3);
+}
+
+.video-watched-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #16a34a;
+  cursor: pointer;
+}
+
+#viewer.viewer-fill .video-watched-toggle {
+  left: 20px;
+  bottom: 20px;
+}
+
+/* "Resume from last position" overlay shown for 5s when reopening a video. */
+.video-resume-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 10px;
+  background: rgba(10, 15, 28, .85);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(10, 15, 28, .4);
+  animation: video-resume-in .2s ease;
+}
+
+.video-resume-label {
+  font-weight: 600;
+}
+
+.video-resume-button {
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+}
+
+@keyframes video-resume-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 .modal {

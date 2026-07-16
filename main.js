@@ -82,7 +82,7 @@ function ensureThumbsDir(mediaType){
 
 function isSupportedMediaFile(filePath, mediaType) {
   const ext = path.extname(filePath).toLowerCase()
-  const videoExts = ['.mp4','.mov','.webm','.mkv','.avi']
+  const videoExts = ['.mp4','.mov','.webm','.mkv','.avi','.m4v','.flv','.wmv','.mpeg','.mpg','.ts','.3gp']
   if (mediaType === 'photo') return IMAGE_EXTS.includes(ext)
   if (mediaType === 'video') return videoExts.includes(ext)
   return false
@@ -136,6 +136,13 @@ function normalizeMetadata(data){
     }
     if (typeof m.description === 'undefined') { m.description = ''; changed = true }
     if (!m.dateAdded) { m.dateAdded = new Date().toISOString(); changed = true }
+    // Video watch state: a boolean "watched" flag and the last playback
+    // position in seconds, used to offer "resume from last position".
+    if (typeof m.watched !== 'boolean') { m.watched = false; changed = true }
+    if (typeof m.position !== 'number' || !isFinite(m.position) || m.position < 0) {
+      m.position = 0
+      changed = true
+    }
   }
   return { data, changed }
 }
@@ -699,6 +706,13 @@ function getMimeType(filePath) {
   if (ext === '.webm') return 'video/webm'
   if (ext === '.mov') return 'video/quicktime'
   if (ext === '.mkv') return 'video/x-matroska'
+  if (ext === '.avi') return 'video/x-msvideo'
+  if (ext === '.m4v') return 'video/mp4'
+  if (ext === '.flv') return 'video/x-flv'
+  if (ext === '.wmv') return 'video/x-ms-wmv'
+  if (ext === '.mpeg' || ext === '.mpg') return 'video/mpeg'
+  if (ext === '.ts') return 'video/mp2t'
+  if (ext === '.3gp') return 'video/3gpp'
   return 'image/jpeg'
 }
 
@@ -950,6 +964,10 @@ async function handleCastRequest(req, res) {
       if (typeof body.category === 'string' && body.category.trim()) item.category = body.category.trim()
       if (Array.isArray(body.tags)) item.tags = body.tags.map(tag => String(tag).trim()).filter(Boolean)
       if (typeof body.description === 'string') item.description = body.description
+      if (typeof body.watched === 'boolean') item.watched = body.watched
+      if (typeof body.position === 'number' && isFinite(body.position) && body.position >= 0) {
+        item.position = body.position
+      }
       if (Array.isArray(body.tags)) {
         body.tags.forEach(tag => {
           if (!data.tags.includes(tag)) data.tags.push(tag)
@@ -1216,7 +1234,7 @@ ipcMain.handle('select-files', async (event, mediaType) => {
   try {
     const filters = mediaType === 'photo'
       ? [{ name: 'Images', extensions: ['jpg','jpeg','png','gif','webp','bmp'] }]
-      : [{ name: 'Videos', extensions: ['mp4','mov','webm','mkv','avi'] }]
+      : [{ name: 'Videos', extensions: ['mp4','mov','webm','mkv','avi','m4v','flv','wmv','mpeg','mpg','ts','3gp'] }]
     const res = await dialog.showOpenDialog({ properties: ['openFile','multiSelections'], filters })
     if (res.canceled) return []
     return res.filePaths
@@ -1434,6 +1452,10 @@ ipcMain.handle('update-media', async (event, changes) => {
       changes.tags.forEach(tag => { if (!data.tags.includes(tag)) data.tags.push(tag) })
     }
     if (typeof changes.description === 'string') item.description = changes.description
+    if (typeof changes.watched === 'boolean') item.watched = changes.watched
+    if (typeof changes.position === 'number' && isFinite(changes.position) && changes.position >= 0) {
+      item.position = changes.position
+    }
     writeMetadataToDisk(data)
     return { ok: true, data }
   } catch (e) {
