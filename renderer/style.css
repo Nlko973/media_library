@@ -1078,6 +1078,73 @@ main {
   font-size: 13px;
 }
 
+.viewer-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.viewer-meta-row:not(.editing):hover {
+  background: rgba(96, 165, 250, .18);
+  color: #fff;
+}
+
+.viewer-meta-label {
+  font-weight: 800;
+  color: #9fb2cc;
+  white-space: nowrap;
+}
+
+.viewer-meta-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.viewer-meta-row.editing {
+  display: grid;
+  gap: 6px;
+  cursor: default;
+  background: rgba(10, 15, 28, .4);
+  padding: 8px;
+}
+
+.viewer-meta-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #3b4860;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e7edf7;
+  font: inherit;
+  resize: vertical;
+}
+
+.viewer-meta-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .28);
+  outline: none;
+}
+
+.viewer-meta-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.viewer-meta-actions .secondary-button {
+  width: auto;
+  min-height: 34px;
+  margin-top: 0;
+  padding: 6px 12px;
+  border-color: #3b4860;
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+}
+
 .modal {
   position: fixed;
   inset: 0;

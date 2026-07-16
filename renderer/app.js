@@ -263,6 +263,16 @@ function setMode(mode) {
   renderCategories()
   renderTags()
   renderMediaGrid()
+  // Switching tabs should always land the user back at the top of the page.
+  scrollToTopOfContent()
+}
+
+function scrollToTopOfContent() {
+  const content = $('#content')
+  if (content) content.scrollTop = 0
+  const sidebar = $('#sidebar')
+  if (sidebar) sidebar.scrollTop = 0
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
 }
 
 function toggleSidebarPanel(panelId, buttonId) {
@@ -1215,15 +1225,197 @@ function openViewer(item) {
   }
 
   const current = findMediaById(item.id) || item
+  body.appendChild(renderViewerMeta(current))
+  $('#viewer').classList.remove('hidden')
+}
+
+// Renders the metadata block under the viewer. The Tags and Description rows
+// are clickable: clicking turns the row into an inline editor so tags and the
+// description can be changed without leaving the viewer.
+function renderViewerMeta(current) {
   const meta = document.createElement('div')
   meta.className = 'viewer-meta'
-  meta.innerHTML = `
-    <div>Category: ${escapeHtml(current.category || 'No category')}</div>
-    <div>Tags: ${escapeHtml((current.tags || []).join(', ') || 'none')}</div>
-    <div>Description: ${escapeHtml(current.description || 'none')}</div>
-  `
-  body.appendChild(meta)
-  $('#viewer').classList.remove('hidden')
+
+  const categoryRow = document.createElement('div')
+  categoryRow.textContent = `Category: ${current.category || 'No category'}`
+  meta.appendChild(categoryRow)
+
+  meta.appendChild(buildViewerMetaRow({
+    label: 'Tags',
+    value: (current.tags || []).join(', '),
+    placeholder: 'none',
+    multiline: false,
+    editTitle: 'Нажмите, чтобы изменить теги (через запятую)',
+    onCommit: text => {
+      const tags = text.split(',').map(tag => tag.trim()).filter(Boolean)
+      return commitViewerField(current, { tags })
+    },
+    render: text => text || 'none',
+    onChange: () => renderTags()
+  }))
+
+  meta.appendChild(buildViewerMetaRow({
+    label: 'Description',
+    value: current.description || '',
+    placeholder: 'none',
+    multiline: true,
+    editTitle: 'Нажмите, чтобы изменить описание',
+    onCommit: text => commitViewerField(current, { description: text }),
+    render: text => text || 'none'
+  }))
+
+  return meta
+}
+
+function buildViewerMetaRow({ label, value, placeholder, multiline, editTitle, onCommit, render, onChange }) {
+  const row = document.createElement('div')
+  row.className = 'viewer-meta-row'
+  row.title = editTitle
+
+  const labelEl = document.createElement('span')
+  labelEl.className = 'viewer-meta-label'
+  labelEl.textContent = `${label}:`
+  row.appendChild(labelEl)
+
+  const valueEl = document.createElement('span')
+  valueEl.className = 'viewer-meta-value'
+  valueEl.textContent = render(value) || placeholder
+  row.appendChild(valueEl)
+
+  // Keep a mutable copy so re-opening the editor reflects the last saved value.
+  let currentValue = value
+
+  row.addEventListener('click', () => {
+    if (row.classList.contains('editing')) return
+    startViewerMetaEdit(row, valueEl, currentValue, multiline, async text => {
+      const result = await onCommit(text)
+      if (result === false) return false
+      currentValue = text
+      if (onChange) onChange()
+      valueEl.textContent = render(text) || placeholder
+      return true
+    })
+  })
+
+  return row
+}
+
+function startViewerMetaEdit(row, valueEl, initialValue, multiline, commit) {
+  row.classList.add('editing')
+  valueEl.classList.add('hidden')
+
+  const input = document.createElement(multiline ? 'textarea' : 'input')
+  if (!multiline) input.type = 'text'
+  input.className = 'viewer-meta-input'
+  input.value = initialValue
+  if (multiline) input.rows = 3
+
+  const actions = document.createElement('div')
+  actions.className = 'viewer-meta-actions'
+
+  const save = document.createElement('button')
+  save.type = 'button'
+  save.className = 'secondary-button'
+  save.textContent = 'Сохранить'
+
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.className = 'secondary-button'
+  cancel.textContent = 'Отмена'
+
+  let finished = false
+  const finish = async apply => {
+    if (finished) return
+    finished = true
+    if (apply) {
+      const text = input.value
+      save.disabled = true
+      cancel.disabled = true
+      const ok = await commit(text)
+      if (ok === false) {
+        finished = false
+        save.disabled = false
+        cancel.disabled = false
+        return
+      }
+    }
+    row.classList.remove('editing')
+    valueEl.classList.remove('hidden')
+    input.replaceWith(valueEl)
+    actions.remove()
+  }
+
+  save.addEventListener('click', () => finish(true))
+  cancel.addEventListener('click', () => finish(false))
+  if (!multiline) {
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        finish(true)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        finish(false)
+      }
+    })
+  } else {
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        finish(false)
+      }
+    })
+  }
+  // Keep keyboard viewer navigation (arrows / F) from firing while editing.
+  ;['click', 'mousedown', 'keydown', 'keyup'].forEach(type => {
+    input.addEventListener(type, event => event.stopPropagation())
+  })
+
+  valueEl.replaceWith(input)
+  input.focus()
+  if (multiline) {
+    input.setSelectionRange(input.value.length, input.value.length)
+  } else {
+    input.select()
+  }
+  row.appendChild(actions)
+  actions.appendChild(save)
+  actions.appendChild(cancel)
+}
+
+async function commitViewerField(item, changes) {
+  const target = findMediaById(item.id)
+  if (!target) return false
+
+  if (Array.isArray(changes.tags)) {
+    target.tags = changes.tags
+    changes.tags.forEach(tag => {
+      if (!state.metadata.tags.includes(tag)) state.metadata.tags.push(tag)
+    })
+  }
+  if (typeof changes.description === 'string') {
+    target.description = changes.description
+  }
+
+  try {
+    if (window.api.updateMedia) {
+      const result = await window.api.updateMedia({
+        id: target.id,
+        tags: target.tags,
+        description: target.description
+      })
+      if (result && result.error) {
+        alert('Ошибка: ' + result.error)
+        return false
+      }
+      if (isWebMode()) await refreshMetadataFromDisk()
+    } else {
+      window.api.writeMetadata(state.metadata)
+    }
+    return true
+  } catch (e) {
+    alert('Ошибка: ' + e.message)
+    return false
+  }
 }
 
 function closeViewer() {
