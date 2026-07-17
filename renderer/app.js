@@ -269,23 +269,22 @@ function setMode(mode) {
 }
 
 function scrollToTopOfContent() {
-  const candidates = [$('#content'), $('main'), $('#app')]
+  // Reset the scroll of the media area and every scroller it sits in, so the
+  // first item lands at the top regardless of which element actually scrolls
+  // (#content on desktop, <main> in the narrow layout, or the window). The
+  // sidebar is intentionally excluded so its position is preserved.
+  const targets = [
+    $('#content'),
+    $('main'),
+    document.scrollingElement,
+    document.body
+  ].filter(Boolean)
   const reset = () => {
-    // Reset every scroll container that could hold the scroll position.
-    candidates.forEach(el => {
-      if (!el) return
-      if (typeof el.scrollTop === 'number') el.scrollTop = 0
+    targets.forEach(el => {
+      el.scrollTop = 0
       if (el.scrollTo) el.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     })
-    const sidebar = $('#sidebar')
-    if (sidebar) {
-      sidebar.scrollTop = 0
-      sidebar.scrollTo?.({ top: 0, left: 0, behavior: 'auto' })
-    }
     window.scrollTo(0, 0)
-    // As a last resort, scroll the content toolbar into view at the top.
-    const toolbar = $('.content-toolbar')
-    if (toolbar) toolbar.scrollIntoView({ block: 'start', behavior: 'auto' })
   }
   // Reset immediately, then again after the browser finishes layout for the
   // newly rendered content. Two rAFs guarantee we run after paint; a small
@@ -293,7 +292,6 @@ function scrollToTopOfContent() {
   reset()
   requestAnimationFrame(reset)
   requestAnimationFrame(() => requestAnimationFrame(reset))
-  setTimeout(reset, 0)
   setTimeout(reset, 50)
 }
 
@@ -904,6 +902,7 @@ function renderMediaGrid() {
 function createMediaCard(item) {
   const card = document.createElement('article')
   card.className = 'media-item'
+  card.dataset.mediaId = String(item.id)
 
   const thumbWrap = document.createElement('div')
   thumbWrap.className = 'thumb-wrap'
@@ -1071,6 +1070,7 @@ function renderPagination(totalItems) {
     state.page = nextPage
     state.selectedMediaIds.clear()
     renderMediaGrid()
+    scrollToTopOfContent()
   }
 
   const first = document.createElement('button')
@@ -1741,6 +1741,7 @@ async function commitViewerField(item, changes) {
 }
 
 function closeViewer() {
+  const lastId = state.viewerId
   stopViewerMedia()
   state.viewerId = null
   state.viewerFillFullscreen = false
@@ -1749,6 +1750,32 @@ function closeViewer() {
   $('#viewer').classList.remove('viewer-comic')
   $('#viewer').classList.add('hidden')
   $('#viewer-body').innerHTML = ''
+  // If the last-viewed item was navigated onto a different page while the
+  // viewer was open (arrow-key / swipe paging through photos), switch the
+  // grid to that page and bring the item into view.
+  ensureItemVisible(lastId)
+}
+
+// Switches the grid to the page that contains the given media item (when it
+// differs from the current page) and scrolls the item's card into view.
+// Called after the viewer closes so the user lands on the photo they ended on.
+function ensureItemVisible(id) {
+  if (id === null || id === undefined) return
+  const items = getFilteredItems()
+  const index = items.findIndex(item => String(item.id) === String(id))
+  if (index === -1) return
+  const targetPage = Math.floor(index / state.pageSize) + 1
+  if (targetPage !== state.page) {
+    state.page = targetPage
+    state.selectedMediaIds.clear()
+    renderMediaGrid()
+  }
+  // Give the freshly rendered cards a tick to land in the DOM, then scroll the
+  // matching card into view.
+  requestAnimationFrame(() => {
+    const card = $(`#media-grid .media-item[data-media-id="${CSS.escape(String(id))}"]`)
+    if (card) card.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  })
 }
 
 function stopViewerMedia() {
