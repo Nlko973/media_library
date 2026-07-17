@@ -1034,6 +1034,19 @@ main {
   border-radius: 6px;
 }
 
+/* Hide scrollbars inside the viewer while keeping scroll functionality. */
+#viewer-body,
+#viewer.viewer-fill.viewer-comic #viewer-body {
+  scrollbar-width: none;
+}
+
+#viewer-body::-webkit-scrollbar,
+#viewer.viewer-fill.viewer-comic #viewer-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 #viewer-body img.viewer-swipe-target {
   touch-action: pan-y;
   user-select: none;
